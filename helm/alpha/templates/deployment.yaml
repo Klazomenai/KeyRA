@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "alpha.fullname" . }}
+  namespace: {{ include "alpha.namespace" . }}
+  labels:
+    {{- include "alpha.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "alpha.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "alpha.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            {{- if .Values.auth.rpcUrl }}
+            - name: RPC_URL
+              value: {{ .Values.auth.rpcUrl | quote }}
+            {{- end }}
+            {{- if .Values.auth.contractAddress }}
+            - name: CONTRACT_ADDRESS
+              value: {{ .Values.auth.contractAddress | quote }}
+            {{- end }}
+            {{- if .Values.auth.chainId }}
+            - name: CHAIN_ID
+              value: {{ .Values.auth.chainId | quote }}
+            {{- end }}
+            {{- if .Values.auth.domain }}
+            - name: DOMAIN
+              value: {{ .Values.auth.domain | quote }}
+            {{- end }}
+            {{- if .Values.auth.sessionTtlSecs }}
+            - name: SESSION_TTL_SECS
+              value: {{ .Values.auth.sessionTtlSecs | quote }}
+            {{- end }}
+            {{- if .Values.auth.existingSecret }}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.existingSecretKey }}
+            {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
