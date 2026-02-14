@@ -1,0 +1,29 @@
+# Rust
+/target/
+
+# Nix
+/result
+/result-*
+.direnv/
+.devenv/
+.devenv.flake.nix
+
+# Foundry build artifacts
+contracts/cache/
+contracts/out/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local
+.keys/
+autonity/
+profiles/
