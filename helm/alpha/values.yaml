@@ -1,0 +1,103 @@
+# alpha
+
+# -- Container image configuration
+image:
+  # -- Image repository
+  repository: ghcr.io/klazomenai/keyra/alpha
+  # -- Image tag (defaults to chart appVersion)
+  tag: latest
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Number of replicas
+replicaCount: 1
+
+# -- Namespace configuration
+namespace:
+  # -- Create the namespace
+  create: true
+  # -- Namespace name
+  name: alpha
+
+# -- Service configuration
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port
+  port: 80
+
+# -- Resource limits and requests
+resources:
+  limits:
+    # -- CPU limit
+    cpu: 50m
+    # -- Memory limit
+    memory: 32Mi
+  requests:
+    # -- CPU request
+    cpu: 10m
+    # -- Memory request
+    memory: 16Mi
+
+# -- Container security context
+# @default -- See values.yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- Pod security context
+# @default -- See values.yaml
+podSecurityContext:
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Liveness probe configuration
+# @default -- See values.yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# -- Readiness probe configuration
+# @default -- See values.yaml
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# -- Node selector for pod assignment
+nodeSelector: {}
+
+# -- Tolerations for pod assignment
+tolerations: []
+
+# -- Affinity for pod assignment
+affinity: {}
+
+# -- Authentication configuration
+auth:
+  # -- Ethereum JSON-RPC endpoint
+  rpcUrl: ""
+  # -- KeyRAAccessControl contract address
+  contractAddress: ""
+  # -- Chain ID for SIWE messages
+  chainId: ""
+  # -- Domain for SIWE messages
+  domain: ""
+  # -- Session TTL in seconds
+  sessionTtlSecs: "3600"
+  # -- Name of existing secret containing SESSION_SECRET
+  existingSecret: ""
+  # -- Key in existing secret for SESSION_SECRET
+  existingSecretKey: "session-secret"

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KeyRA - Sign In</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .auth-container {
+      text-align: center;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    .status {
+      margin: 20px 0;
+      padding: 10px;
+      border: 1px solid var(--foreground);
+    }
+    .status.error {
+      border-color: #ff4444;
+      color: #ff4444;
+    }
+    .status.success {
+      border-color: var(--accent);
+    }
+    .hidden {
+      display: none;
+    }
+    .address {
+      font-family: monospace;
+      word-break: break-all;
+    }
+    .spinner {
+      display: inline-block;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-container">
+    <h1>KeyRA</h1>
+    <p>Sign in with your Ethereum wallet</p>
+
+    <div id="status" class="status hidden"></div>
+
+    <div id="connect-section">
+      <button id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+    </div>
+
+    <div id="sign-section" class="hidden">
+      <p>Connected as:</p>
+      <p class="address" id="address"></p>
+      <button id="sign-btn" onclick="signIn()">Sign In</button>
+    </div>
+
+    <div id="loading-section" class="hidden">
+      <p><span class="spinner">⟳</span> Processing...</p>
+    </div>
+  </div>
+
+  <script>
+    let userAddress = null;
+    let provider = null;
+
+    function showStatus(message, isError = false) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.classList.remove('hidden', 'error', 'success');
+      status.classList.add(isError ? 'error' : 'success');
+    }
+
+    function hideStatus() {
+      document.getElementById('status').classList.add('hidden');
+    }
+
+    function showSection(sectionId) {
+      ['connect-section', 'sign-section', 'loading-section'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(sectionId).classList.remove('hidden');
+    }
+
+    async function connectWallet() {
+      hideStatus();
+
+      if (typeof window.ethereum === 'undefined') {
+        showStatus('MetaMask not detected. Please install MetaMask.', true);
+        return;
+      }
+
+      try {
+        showSection('loading-section');
+
+        // Request account access
+        const accounts = await window.ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+
+        if (accounts.length === 0) {
+          showStatus('No accounts found. Please unlock MetaMask.', true);
+          showSection('connect-section');
+          return;
+        }
+
+        userAddress = accounts[0];
+        document.getElementById('address').textContent = userAddress;
+        showSection('sign-section');
+
+      } catch (error) {
+        console.error('Connect error:', error);
+        showStatus(error.message || 'Failed to connect wallet', true);
+        showSection('connect-section');
+      }
+    }
+
+    async function signIn() {
+      hideStatus();
+
+      if (!userAddress) {
+        showStatus('Please connect your wallet first', true);
+        return;
+      }
+
+      try {
+        showSection('loading-section');
+
+        // 1. Request challenge from server
+        const challengeRes = await fetch('/auth/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: userAddress })
+        });
+
+        if (!challengeRes.ok) {
+          const err = await challengeRes.text();
+          throw new Error(err || 'Failed to get challenge');
+        }
+
+        const { message, nonce } = await challengeRes.json();
+
+        // 2. Sign the message with MetaMask
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [message, userAddress]
+        });
+
+        // 3. Submit signature for verification
+        const verifyRes = await fetch('/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: message,
+            signature: signature
+          })
+        });
+
+        if (!verifyRes.ok) {
+          const err = await verifyRes.text();
+          throw new Error(err || 'Verification failed');
+        }
+
+        // 4. Success - redirect to home
+        showStatus('Success! Redirecting...');
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
+
+      } catch (error) {
+        console.error('Sign in error:', error);
+
+        // Handle user rejection
+        if (error.code === 4001) {
+          showStatus('Signature request was rejected', true);
+        } else {
+          showStatus(error.message || 'Sign in failed', true);
+        }
+
+        showSection('sign-section');
+      }
+    }
+
+    // Handle account changes
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length === 0) {
+          userAddress = null;
+          showSection('connect-section');
+        } else {
+          userAddress = accounts[0];
+          document.getElementById('address').textContent = userAddress;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# Patterns to ignore when building packages.
+.DS_Store
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+
+# Nix
+.devenv/
+.devenv.flake.nix
+.direnv/
+result
+result-*
+
+# Testing
+*.test.yaml

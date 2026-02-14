@@ -1,0 +1,40 @@
+[package]
+name = "alpha"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "KeyRA Alpha Landing Page"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+rust-embed = "8"
+mime_guess = "2"
+
+# Ethereum / Auth
+alloy = { version = "1", features = ["providers", "signers", "contract", "signer-local", "sol-types"] }
+siwe = "0.6"
+rand = "0.8"
+hex = "0.4"
+url = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Session / Crypto
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "cookies"] }
+
+[profile.release]
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1

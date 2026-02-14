@@ -1,0 +1,6 @@
+# Developer overrides
+namespace:
+  name: alpha-dev
+
+image:
+  pullPolicy: Always

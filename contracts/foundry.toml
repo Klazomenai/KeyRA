@@ -1,0 +1,16 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.20"
+evm_version = "paris"  # Autonity doesn't support PUSH0 (Shanghai)
+optimizer = true
+optimizer_runs = 10000
+
+[rpc_endpoints]
+local = "http://127.0.0.1:8545"
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
