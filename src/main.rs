@@ -36,6 +36,7 @@ async fn main() -> Result<(), BoxError> {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1337),
+        jwt_service_url: std::env::var("JWT_SERVICE_URL").ok(),
     };
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -46,6 +47,12 @@ async fn main() -> Result<(), BoxError> {
     eprintln!("  Contract: {:?}", auth_config.contract_address);
     eprintln!("  Domain: {}", auth_config.domain);
     eprintln!("  Chain ID: {}", auth_config.chain_id);
+    eprintln!("  JWT Service: {}", match &auth_config.jwt_service_url {
+        Some(url) => url.parse::<url::Url>()
+            .map(|u| u.host_str().unwrap_or("configured").to_string())
+            .unwrap_or_else(|_| "configured".to_string()),
+        None => "disabled".to_string(),
+    });
 
     alpha::serve(listener, Some(auth_config)).await
 }
