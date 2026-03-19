@@ -41,7 +41,7 @@ async fn start_test_server(
     format!("http://{}", local_addr)
 }
 
-/// Get a URL pointing at a guaranteed-unreachable port (bind then close)
+/// Get a URL pointing at a likely-unreachable port (bind then close)
 async fn unreachable_url() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
