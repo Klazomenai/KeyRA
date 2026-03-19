@@ -106,9 +106,9 @@ impl AuthService {
         Self { config }
     }
 
-    /// Get a reference to the auth configuration
-    pub fn config(&self) -> &AuthConfig {
-        &self.config
+    /// Get the jwt-auth-service URL if configured
+    pub fn jwt_service_url(&self) -> Option<&str> {
+        self.config.jwt_service_url.as_deref()
     }
 
     /// Generate a random nonce for SIWE

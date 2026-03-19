@@ -388,8 +388,8 @@ async fn handle_auth_token(
     state: Arc<AppState>,
 ) -> Result<Response<Full<Bytes>>, BoxError> {
     // Check jwt_service_url is configured
-    let jwt_service_url = match &state.auth.config().jwt_service_url {
-        Some(url) => url.clone(),
+    let jwt_service_url = match state.auth.jwt_service_url() {
+        Some(url) => url.to_string(),
         None => {
             return Ok(error_response(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -463,7 +463,10 @@ async fn handle_auth_token(
         Ok(false) => return Ok(error_response(StatusCode::FORBIDDEN, "Access denied")),
         Err(e) => {
             eprintln!("Contract call error: {}", e);
-            return Ok(error_response(StatusCode::FORBIDDEN, "Access denied"));
+            return Ok(error_response(
+                StatusCode::BAD_GATEWAY,
+                "Access check unavailable",
+            ));
         }
     }
 

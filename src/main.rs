@@ -47,7 +47,12 @@ async fn main() -> Result<(), BoxError> {
     eprintln!("  Contract: {:?}", auth_config.contract_address);
     eprintln!("  Domain: {}", auth_config.domain);
     eprintln!("  Chain ID: {}", auth_config.chain_id);
-    eprintln!("  JWT Service: {}", auth_config.jwt_service_url.as_deref().unwrap_or("disabled"));
+    eprintln!("  JWT Service: {}", match &auth_config.jwt_service_url {
+        Some(url) => url.parse::<url::Url>()
+            .map(|u| u.host_str().unwrap_or("configured").to_string())
+            .unwrap_or_else(|_| "configured".to_string()),
+        None => "disabled".to_string(),
+    });
 
     alpha::serve(listener, Some(auth_config)).await
 }
