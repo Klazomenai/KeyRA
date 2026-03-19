@@ -66,14 +66,22 @@ pub struct AppState {
     pub auth: AuthService,
     /// Pending nonces (address -> nonce) - in production, use Redis with TTL
     pub pending_nonces: RwLock<HashMap<String, String>>,
+    /// Shared HTTP client for outbound requests (connection pooling)
+    pub http_client: reqwest::Client,
 }
 
 impl AppState {
     /// Create new app state with the given auth config
     pub fn new(auth_config: AuthConfig) -> Self {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build HTTP client");
+
         Self {
             auth: AuthService::new(auth_config),
             pending_nonces: RwLock::new(HashMap::new()),
+            http_client,
         }
     }
 }
@@ -459,6 +467,28 @@ async fn handle_auth_token(
         }
     }
 
+    // Build jwt-auth-service URL safely
+    let base_url: url::Url = match jwt_service_url.parse() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("Invalid JWT_SERVICE_URL: {}", e);
+            return Ok(error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Token service misconfigured",
+            ));
+        }
+    };
+    let token_url = match base_url.join("token-pairs") {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("Failed to build token URL: {}", e);
+            return Ok(error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Token service misconfigured",
+            ));
+        }
+    };
+
     // Request token from jwt-auth-service
     let token_req = JwtTokenRequest {
         user_id: format!("{:?}", address),
@@ -468,9 +498,9 @@ async fn handle_auth_token(
         include_child: false,
     };
 
-    let client = reqwest::Client::new();
-    let jwt_resp = match client
-        .post(format!("{}/token-pairs", jwt_service_url))
+    let jwt_resp = match state
+        .http_client
+        .post(token_url)
         .json(&token_req)
         .send()
         .await
@@ -486,6 +516,12 @@ async fn handle_auth_token(
     };
 
     let status = jwt_resp.status();
+    let content_type = jwt_resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/json")
+        .to_string();
     let resp_bytes = match jwt_resp.bytes().await {
         Ok(b) => b,
         Err(e) => {
@@ -497,9 +533,9 @@ async fn handle_auth_token(
         }
     };
 
-    // Proxy the response status and body from jwt-auth-service
+    // Proxy the response status, content-type, and body from jwt-auth-service
     let proxy_status = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    Ok(response(proxy_status, "application/json", resp_bytes.to_vec()))
+    Ok(response(proxy_status, &content_type, resp_bytes.to_vec()))
 }
 
 /// Serve an embedded asset by path.
