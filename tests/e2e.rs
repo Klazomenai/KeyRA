@@ -339,7 +339,7 @@ async fn token_endpoint_returns_502_when_jwt_service_unreachable() {
         .await
         .expect("failed to grant access");
 
-    // Point jwt_service_url at a guaranteed-unreachable port
+    // Point jwt_service_url at a likely-unreachable port
     let dead_url = unreachable_url().await;
     let base_url = start_test_server(contract_address, Some(&dead_url)).await;
 
