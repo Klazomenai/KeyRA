@@ -77,6 +77,8 @@ pub struct AuthConfig {
     pub domain: String,
     /// Chain ID
     pub chain_id: u64,
+    /// jwt-auth-service URL for token creation (optional)
+    pub jwt_service_url: Option<String>,
 }
 
 impl Default for AuthConfig {
@@ -88,6 +90,7 @@ impl Default for AuthConfig {
             session_ttl: DEFAULT_SESSION_TTL,
             domain: "localhost".to_string(),
             chain_id: 1337, // Default dev chain ID
+            jwt_service_url: None,
         }
     }
 }
@@ -101,6 +104,11 @@ impl AuthService {
     /// Create a new authentication service
     pub fn new(config: AuthConfig) -> Self {
         Self { config }
+    }
+
+    /// Get a reference to the auth configuration
+    pub fn config(&self) -> &AuthConfig {
+        &self.config
     }
 
     /// Generate a random nonce for SIWE

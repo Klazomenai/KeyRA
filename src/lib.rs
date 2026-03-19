@@ -163,11 +163,21 @@ struct ChallengeResponse {
     nonce: String,
 }
 
-/// Verify request
+/// Verify request (used by both /auth/verify and /auth/token)
 #[derive(Deserialize)]
 struct VerifyRequest {
     message: String,
     signature: String,
+}
+
+/// Token request to jwt-auth-service
+#[derive(Serialize)]
+struct JwtTokenRequest {
+    user_id: String,
+    network: String,
+    rate_limit: i32,
+    parent_expiry_hours: i32,
+    include_child: bool,
 }
 
 /// Handle an incoming HTTP request.
@@ -190,6 +200,9 @@ async fn handle(
 
         // Verify endpoint - POST
         (Method::POST, "/auth/verify") => handle_verify(req, state).await,
+
+        // Token endpoint - POST (SIWE verify + jwt-auth-service token creation)
+        (Method::POST, "/auth/token") => handle_auth_token(req, state).await,
 
         // Protected index page
         (Method::GET, "/") => {
@@ -359,6 +372,134 @@ async fn handle_verify(
             Ok(error_response(StatusCode::FORBIDDEN, "Access denied"))
         }
     }
+}
+
+/// Handle token request (SIWE verify + jwt-auth-service token creation)
+async fn handle_auth_token(
+    req: Request<hyper::body::Incoming>,
+    state: Arc<AppState>,
+) -> Result<Response<Full<Bytes>>, BoxError> {
+    // Check jwt_service_url is configured
+    let jwt_service_url = match &state.auth.config().jwt_service_url {
+        Some(url) => url.clone(),
+        None => {
+            return Ok(error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Token service not configured",
+            ))
+        }
+    };
+
+    // Read body
+    let body = req.collect().await?.to_bytes();
+    let verify_req: VerifyRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(_) => {
+            return Ok(error_response(
+                StatusCode::BAD_REQUEST,
+                "Invalid JSON",
+            ))
+        }
+    };
+
+    // Decode signature (remove 0x prefix if present)
+    let sig_hex = verify_req.signature.trim_start_matches("0x");
+    let signature = match hex::decode(sig_hex) {
+        Ok(s) => s,
+        Err(_) => {
+            return Ok(error_response(
+                StatusCode::BAD_REQUEST,
+                "Invalid signature format",
+            ))
+        }
+    };
+
+    // Verify signature and recover address
+    let address = match state.auth.verify_signature(&verify_req.message, &signature) {
+        Ok(a) => a,
+        Err(AuthError::InvalidSignature) => {
+            return Ok(error_response(
+                StatusCode::UNAUTHORIZED,
+                "Invalid signature",
+            ))
+        }
+        Err(AuthError::InvalidMessage) => {
+            return Ok(error_response(
+                StatusCode::BAD_REQUEST,
+                "Invalid message format",
+            ))
+        }
+        Err(e) => {
+            return Ok(error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &e.to_string(),
+            ))
+        }
+    };
+
+    // Check pending nonce
+    {
+        let mut nonces = state.pending_nonces.write().await;
+        let addr_key = format!("{:?}", address).to_lowercase();
+        if nonces.remove(&addr_key).is_none() {
+            return Ok(error_response(
+                StatusCode::BAD_REQUEST,
+                "No pending challenge for this address",
+            ));
+        }
+    }
+
+    // Check access on contract (if configured)
+    match state.auth.has_access(address).await {
+        Ok(true) => {}
+        Ok(false) => return Ok(error_response(StatusCode::FORBIDDEN, "Access denied")),
+        Err(e) => {
+            eprintln!("Contract call error: {}", e);
+            return Ok(error_response(StatusCode::FORBIDDEN, "Access denied"));
+        }
+    }
+
+    // Request token from jwt-auth-service
+    let token_req = JwtTokenRequest {
+        user_id: format!("{:?}", address),
+        network: "default".to_string(),
+        rate_limit: 100,
+        parent_expiry_hours: 8,
+        include_child: false,
+    };
+
+    let client = reqwest::Client::new();
+    let jwt_resp = match client
+        .post(format!("{}/token-pairs", jwt_service_url))
+        .json(&token_req)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("jwt-auth-service request failed: {}", e);
+            return Ok(error_response(
+                StatusCode::BAD_GATEWAY,
+                "Token service unavailable",
+            ));
+        }
+    };
+
+    let status = jwt_resp.status();
+    let resp_bytes = match jwt_resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("jwt-auth-service response read failed: {}", e);
+            return Ok(error_response(
+                StatusCode::BAD_GATEWAY,
+                "Token service response error",
+            ));
+        }
+    };
+
+    // Proxy the response status and body from jwt-auth-service
+    let proxy_status = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    Ok(response(proxy_status, "application/json", resp_bytes.to_vec()))
 }
 
 /// Serve an embedded asset by path.

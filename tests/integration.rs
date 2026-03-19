@@ -1,3 +1,4 @@
+use alpha::auth::AuthConfig;
 use std::net::SocketAddr;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -278,4 +279,79 @@ async fn server_survives_tls_handshake_attempt() {
 
     assert_eq!(resp.status(), 200);
     assert_eq!(resp.text().await.unwrap(), "OK");
+}
+
+#[tokio::test]
+async fn token_endpoint_returns_503_without_jwt_service() {
+    // Server started without JWT_SERVICE_URL — /auth/token should return 503
+    let base_url = start_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("{}/auth/token", base_url))
+        .header("content-type", "application/json")
+        .body(r#"{"message":"test","signature":"0x1234"}"#)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 503);
+    assert_eq!(resp.text().await.unwrap(), "Token service not configured");
+}
+
+#[tokio::test]
+async fn token_endpoint_rejects_invalid_json() {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    let (listener, local_addr) = alpha::bind(addr).await.unwrap();
+
+    let config = AuthConfig {
+        jwt_service_url: Some("http://localhost:9999".to_string()),
+        ..Default::default()
+    };
+
+    tokio::spawn(async move {
+        let _ = alpha::serve(listener, Some(config)).await;
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{}/auth/token", local_addr))
+        .header("content-type", "application/json")
+        .body("not json")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
+async fn token_endpoint_rejects_invalid_signature() {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    let (listener, local_addr) = alpha::bind(addr).await.unwrap();
+
+    let config = AuthConfig {
+        jwt_service_url: Some("http://localhost:9999".to_string()),
+        ..Default::default()
+    };
+
+    tokio::spawn(async move {
+        let _ = alpha::serve(listener, Some(config)).await;
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{}/auth/token", local_addr))
+        .header("content-type", "application/json")
+        .body(r#"{"message":"test","signature":"0x1234"}"#)
+        .send()
+        .await
+        .unwrap();
+
+    // Should fail at SIWE verification (invalid signature length or format)
+    assert!(resp.status().is_client_error() || resp.status().is_server_error());
 }
