@@ -15,8 +15,11 @@ use std::time::Duration;
 
 const RPC_URL: &str = "http://127.0.0.1:8545";
 
-/// Helper to start a test server with auth config
-async fn start_auth_server(contract_address: Address) -> String {
+/// Helper to start a test server with optional jwt-auth-service URL
+async fn start_test_server(
+    contract_address: Address,
+    jwt_service_url: Option<&str>,
+) -> String {
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let (listener, local_addr) = alpha::bind(addr).await.unwrap();
 
@@ -27,6 +30,7 @@ async fn start_auth_server(contract_address: Address) -> String {
         session_ttl: Duration::from_secs(3600),
         domain: "localhost".to_string(),
         chain_id: 1337,
+        jwt_service_url: jwt_service_url.map(|s| s.to_string()),
     };
 
     tokio::spawn(async move {
@@ -35,6 +39,58 @@ async fn start_auth_server(contract_address: Address) -> String {
 
     tokio::time::sleep(Duration::from_millis(10)).await;
     format!("http://{}", local_addr)
+}
+
+/// Get a URL pointing at a likely-unreachable port (bind then close)
+async fn unreachable_url() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    format!("http://127.0.0.1:{}", port)
+}
+
+/// Helper to perform challenge + sign flow, returning (message, signature_hex)
+async fn challenge_and_sign(
+    client: &reqwest::Client,
+    base_url: &str,
+    signer: &alloy::signers::local::PrivateKeySigner,
+    address: Address,
+) -> (String, String) {
+    let payload = serde_json::json!({ "address": format!("{}", address) });
+    let challenge_resp = client
+        .post(format!("{}/auth/challenge", base_url))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(challenge_resp.status(), 200);
+    let challenge: serde_json::Value = challenge_resp.json().await.unwrap();
+    let message = challenge["message"].as_str().unwrap().to_string();
+
+    let signature = sign_message(signer, &message);
+    let sig_hex = format!("0x{}", hex::encode(&signature));
+
+    (message, sig_hex)
+}
+
+/// Helper to POST to /auth/token with a signed SIWE message
+async fn post_auth_token(
+    client: &reqwest::Client,
+    base_url: &str,
+    message: &str,
+    signature: &str,
+) -> reqwest::Response {
+    let payload = serde_json::json!({
+        "message": message,
+        "signature": signature,
+    });
+    client
+        .post(format!("{}/auth/token", base_url))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap()
 }
 
 /// Full authentication flow test
@@ -71,7 +127,7 @@ async fn full_auth_flow_with_access() {
     eprintln!("Access granted to: {:?}", address);
 
     // Start server with contract configured
-    let base_url = start_auth_server(contract_address).await;
+    let base_url = start_test_server(contract_address, None).await;
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -165,7 +221,7 @@ async fn access_denied_without_access() {
     eprintln!("Contract deployed at: {:?}", contract_address);
     eprintln!("NOT granting access to: {:?}", address);
 
-    let base_url = start_auth_server(contract_address).await;
+    let base_url = start_test_server(contract_address, None).await;
 
     let client = reqwest::Client::new();
 
@@ -223,7 +279,7 @@ async fn invalid_signature_rejected() {
         .await
         .expect("failed to grant access");
 
-    let base_url = start_auth_server(contract_address).await;
+    let base_url = start_test_server(contract_address, None).await;
 
     let client = reqwest::Client::new();
 
@@ -258,4 +314,102 @@ async fn invalid_signature_rejected() {
 
     // Should get 401 Unauthorized
     assert_eq!(verify_resp.status(), 401);
+}
+
+/// Test /auth/token returns 502 when jwt-auth-service is unreachable
+///
+/// This test verifies the full SIWE flow through to the jwt-auth-service
+/// call, which fails because there's no real jwt-auth-service running.
+/// The 502 proves all prior steps (SIWE verify, nonce, access check) passed.
+#[tokio::test]
+async fn token_endpoint_returns_502_when_jwt_service_unreachable() {
+    if !is_node_running(RPC_URL).await {
+        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+        return;
+    }
+
+    let (signer, address) = dev_wallet();
+
+    // Deploy contract and grant access
+    let contract_address = deploy_access_contract(RPC_URL, signer.clone(), address)
+        .await
+        .expect("failed to deploy contract");
+
+    grant_access(RPC_URL, signer.clone(), contract_address, address)
+        .await
+        .expect("failed to grant access");
+
+    // Point jwt_service_url at a likely-unreachable port
+    let dead_url = unreachable_url().await;
+    let base_url = start_test_server(contract_address, Some(&dead_url)).await;
+
+    let client = reqwest::Client::new();
+
+    // Challenge + sign
+    let (message, sig_hex) = challenge_and_sign(&client, &base_url, &signer, address).await;
+
+    // POST /auth/token — SIWE passes, but jwt-auth-service call fails
+    let token_resp = post_auth_token(&client, &base_url, &message, &sig_hex).await;
+
+    // 502 proves SIWE verification, nonce consumption, and access check all passed
+    assert_eq!(token_resp.status(), 502);
+    let body = token_resp.text().await.unwrap();
+    assert!(body.contains("Token service unavailable"), "Expected 'Token service unavailable', got: {}", body);
+}
+
+/// Test /auth/token returns 403 when address lacks access
+#[tokio::test]
+async fn token_endpoint_denied_without_access() {
+    if !is_node_running(RPC_URL).await {
+        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+        return;
+    }
+
+    let (signer, address) = dev_wallet();
+
+    // Deploy contract but DON'T grant access
+    let contract_address = deploy_access_contract(RPC_URL, signer.clone(), address)
+        .await
+        .expect("failed to deploy contract");
+
+    let dead_url = unreachable_url().await;
+    let base_url = start_test_server(contract_address, Some(&dead_url)).await;
+
+    let client = reqwest::Client::new();
+
+    // Challenge + sign
+    let (message, sig_hex) = challenge_and_sign(&client, &base_url, &signer, address).await;
+
+    // POST /auth/token — should be denied before reaching jwt-auth-service
+    let token_resp = post_auth_token(&client, &base_url, &message, &sig_hex).await;
+
+    assert_eq!(token_resp.status(), 403);
+}
+
+/// Test /auth/token returns 503 when jwt_service_url is not configured
+///
+/// This test does NOT require a running Autonity node — the 503 is returned
+/// before any SIWE verification or chain interaction.
+#[tokio::test]
+async fn token_endpoint_returns_503_without_jwt_config() {
+    // No node needed — 503 returns before any chain interaction
+    let base_url = start_test_server(Address::ZERO, None).await;
+
+    let client = reqwest::Client::new();
+
+    // POST /auth/token with any body — should fail immediately
+    let payload = serde_json::json!({
+        "message": "dummy",
+        "signature": "0x00",
+    });
+    let token_resp = client
+        .post(format!("{}/auth/token", base_url))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(token_resp.status(), 503);
+    let body = token_resp.text().await.unwrap();
+    assert!(body.contains("Token service not configured"));
 }
