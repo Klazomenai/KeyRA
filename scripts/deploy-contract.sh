@@ -14,6 +14,7 @@
 # Options:
 #   --rpc URL           RPC endpoint (default: http://127.0.0.1:8545)
 #   --show-keys         Display private keys in output (for MetaMask import)
+#   --dry-run           Simulate deployment without broadcasting transactions
 #   --clean             Remove existing keys and start fresh
 #   --help              Show this help message
 #
@@ -31,6 +32,7 @@ KEYS_DIR="$PROJECT_DIR/.keys"
 # Defaults
 RPC_URL="http://127.0.0.1:8545"
 SHOW_KEYS=false
+DRY_RUN=false
 CLEAN=false
 
 # Key file names
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --show-keys)
             SHOW_KEYS=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
             shift
             ;;
         --clean)
@@ -185,15 +191,28 @@ deploy_contract() {
     log "Deploying KeyRAAccessControl contract..."
     log "  Admin: $admin_address"
 
+    local broadcast_flag="--broadcast"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        broadcast_flag=""
+        log "  Mode: DRY RUN (simulating, no transaction will be sent)"
+    fi
+
     # Deploy using forge create (CONTRACT must come before --constructor-args)
     local output
     output=$(forge create \
         --root "$CONTRACTS_DIR" \
         --rpc-url "$RPC_URL" \
         --private-key "$privkey" \
-        --broadcast \
+        $broadcast_flag \
         "$CONTRACT_SRC" \
         --constructor-args "$admin_address" 2>&1)
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "Dry run output:"
+        echo "$output" >&2
+        echo "DRY_RUN"
+        return
+    fi
 
     # Extract deployed address
     local contract_address
@@ -300,6 +319,11 @@ main() {
     # Deploy contract
     local contract_address
     contract_address=$(deploy_contract "$admin_privkey" "$admin_address")
+
+    if [[ "$contract_address" == "DRY_RUN" ]]; then
+        log "Dry run complete. No transactions were broadcast."
+        exit 0
+    fi
 
     # Grant access to read-only account
     grant_access "$contract_address" "$admin_privkey" "$readonly_address"
