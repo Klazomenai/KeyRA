@@ -68,6 +68,12 @@ helm install alpha ./helm/alpha -f helm/alpha/values-dev.yaml
    ```
 3. Configure the Helm values with your contract address and RPC endpoint
 
+## Versioning
+
+This chart is in **pre-release** (0.1.0) and is not published to a Helm registry. It is deployed directly from git via ArgoCD multi-source, which tracks the git revision rather than the chart version.
+
+Chart version bumps, `appVersion` tracking, and release automation (release-please or equivalent) are planned as part of CI epic #9. Until then, 0.1.0 is intentional.
+
 ## Security
 
 The chart enforces security best practices:
