@@ -97,6 +97,8 @@ auth:
   domain: ""
   # -- Session TTL in seconds
   sessionTtlSecs: "3600"
+  # -- jwt-auth-service URL for token creation (optional, disables /auth/token when empty)
+  jwtServiceUrl: ""
   # -- Name of existing secret containing SESSION_SECRET
   existingSecret: ""
   # -- Key in existing secret for SESSION_SECRET

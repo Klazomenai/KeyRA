@@ -10,6 +10,7 @@ KeyRA Alpha Landing Page with Ethereum Wallet Authentication
 | auth.chainId | string | `""` | Chain ID for SIWE messages |
 | auth.contractAddress | string | `""` | KeyRAAccessControl contract address |
 | auth.domain | string | `""` | Domain for SIWE messages |
+| auth.jwtServiceUrl | string | `""` | jwt-auth-service URL for token creation (optional, disables /auth/token when empty) |
 | auth.existingSecret | string | `""` | Name of existing secret containing SESSION_SECRET |
 | auth.existingSecretKey | string | `"session-secret"` | Key in existing secret for SESSION_SECRET |
 | auth.rpcUrl | string | `""` | Ethereum JSON-RPC endpoint |
@@ -47,7 +48,8 @@ helm install alpha ./helm/alpha \
   --set auth.contractAddress="0x..." \
   --set auth.chainId="65111111" \
   --set auth.domain="example.com" \
-  --set auth.existingSecret="alpha-session-secret"
+  --set auth.existingSecret="alpha-session-secret" \
+  --set auth.jwtServiceUrl="http://jwt-auth:8080"
 ```
 
 With custom values file:

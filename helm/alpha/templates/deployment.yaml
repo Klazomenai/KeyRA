@@ -50,6 +50,10 @@ spec:
             - name: SESSION_TTL_SECS
               value: {{ .Values.auth.sessionTtlSecs | quote }}
             {{- end }}
+            {{- if .Values.auth.jwtServiceUrl }}
+            - name: JWT_SERVICE_URL
+              value: {{ .Values.auth.jwtServiceUrl | quote }}
+            {{- end }}
             {{- if .Values.auth.existingSecret }}
             - name: SESSION_SECRET
               valueFrom:
