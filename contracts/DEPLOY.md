@@ -55,8 +55,8 @@ generates a throwaway keypair and skips account creation and funding — only th
 `forge create` simulation runs:
 
 ```bash
-# Dry run against mainnet — shows gas estimate, does NOT broadcast
-./scripts/deploy-contract.sh --rpc https://rpc1.bakerloo.autonity.org --dry-run
+# Dry run — shows gas estimate, does NOT broadcast
+./scripts/deploy-contract.sh --rpc <RPC_URL> --dry-run
 
 # Or manually with forge:
 forge create \

@@ -313,6 +313,10 @@ main() {
         dry_address=$(echo "$wallet_output" | grep "Address:" | awk '{print $2}')
         dry_privkey=$(echo "$wallet_output" | grep "Private key:" | awk '{print $3}')
 
+        if [[ -z "$dry_address" || -z "$dry_privkey" || "$dry_address" != 0x* || "$dry_privkey" != 0x* ]]; then
+            error "Failed to parse address/private key from 'cast wallet new' output"
+        fi
+
         deploy_contract "$dry_privkey" "$dry_address"
         log "Dry run complete. No transactions were broadcast."
         exit 0
