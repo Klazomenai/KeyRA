@@ -198,20 +198,28 @@ deploy_contract() {
     fi
 
     # Deploy using forge create (CONTRACT must come before --constructor-args)
-    local output
+    # Capture output and exit code separately so failures are reported with context.
+    local output rc=0
     output=$(forge create \
         --root "$CONTRACTS_DIR" \
         --rpc-url "$RPC_URL" \
         --private-key "$privkey" \
         $broadcast_flag \
         "$CONTRACT_SRC" \
-        --constructor-args "$admin_address" 2>&1)
+        --constructor-args "$admin_address" 2>&1) || rc=$?
 
     if [[ "$DRY_RUN" == "true" ]]; then
         log "Dry run output:"
         echo "$output" >&2
+        if [[ $rc -ne 0 ]]; then
+            error "forge create failed (exit $rc)"
+        fi
         echo "DRY_RUN"
         return
+    fi
+
+    if [[ $rc -ne 0 ]]; then
+        error "forge create failed (exit $rc). Output:\n$output"
     fi
 
     # Extract deployed address
@@ -288,12 +296,16 @@ main() {
         rm -rf "$KEYS_DIR"
     fi
 
-    # Check prerequisites
-    check_prerequisites
-
-    # Dry run: skip dev account, funding, and account creation.
-    # Generate a throwaway keypair for forge simulation only.
+    # Dry run: only check tools and RPC, then simulate with a throwaway keypair.
     if [[ "$DRY_RUN" == "true" ]]; then
+        # Check tools and RPC only — skip .keys dir and .gitignore mutations
+        if ! command -v cast &>/dev/null; then
+            error "cast not found. Enter devenv shell: devenv shell"
+        fi
+        if ! command -v forge &>/dev/null; then
+            error "forge not found. Enter devenv shell: devenv shell"
+        fi
+        check_rpc
         log "Dry run mode — skipping account creation and funding"
 
         local wallet_output dry_privkey dry_address

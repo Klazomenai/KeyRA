@@ -77,11 +77,20 @@ cast gas-price --rpc-url <MAINNET_RPC>
 # 2. Check deployer balance
 cast balance --rpc-url <MAINNET_RPC> <DEPLOYER_ADDRESS> --ether
 
-# 3. Deploy (forge create WITHOUT --broadcast simulates first)
+# 3. Set deployer credentials
 export DEPLOYER_KEY="<private-key>"
 export MAINNET_RPC="<rpc-url>"
 export ADMIN_ADDRESS="<your-address>"
 
+# 4. Simulate first (no --broadcast = dry run)
+forge create \
+  --root contracts \
+  --rpc-url "$MAINNET_RPC" \
+  --private-key "$DEPLOYER_KEY" \
+  src/AccessList.sol:KeyRAAccessControl \
+  --constructor-args "$ADMIN_ADDRESS"
+
+# 5. If simulation looks good, broadcast for real
 forge create \
   --root contracts \
   --rpc-url "$MAINNET_RPC" \
@@ -90,16 +99,16 @@ forge create \
   src/AccessList.sol:KeyRAAccessControl \
   --constructor-args "$ADMIN_ADDRESS"
 
-# 4. Verify deployment
+# 6. Verify deployment
 export CONTRACT="<deployed-address>"
 cast call --rpc-url "$MAINNET_RPC" "$CONTRACT" "isAdmin(address)(bool)" "$ADMIN_ADDRESS"
 # Should return: true
 
-# 5. Grant access to wallet(s)
+# 7. Grant access to wallet(s)
 cast send --rpc-url "$MAINNET_RPC" --private-key "$DEPLOYER_KEY" \
   "$CONTRACT" "grantAccess(address)" "<USER_ADDRESS>"
 
-# 6. Verify access
+# 8. Verify access
 cast call --rpc-url "$MAINNET_RPC" "$CONTRACT" "hasAccess(address)(bool)" "<USER_ADDRESS>"
 # Should return: true
 ```
