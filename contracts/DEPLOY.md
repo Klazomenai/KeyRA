@@ -50,7 +50,9 @@ cd contracts && forge test --gas-report
 
 ## Dry Run (simulate without broadcasting)
 
-Estimate gas on any network without spending ATN:
+Estimate gas on any network without spending ATN. In dry-run mode the script
+generates a throwaway keypair and skips account creation and funding — only the
+`forge create` simulation runs:
 
 ```bash
 # Dry run against mainnet — shows gas estimate, does NOT broadcast

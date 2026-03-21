@@ -291,6 +291,21 @@ main() {
     # Check prerequisites
     check_prerequisites
 
+    # Dry run: skip dev account, funding, and account creation.
+    # Generate a throwaway keypair for forge simulation only.
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "Dry run mode — skipping account creation and funding"
+
+        local wallet_output dry_privkey dry_address
+        wallet_output=$(cast wallet new)
+        dry_address=$(echo "$wallet_output" | grep "Address:" | awk '{print $2}')
+        dry_privkey=$(echo "$wallet_output" | grep "Private key:" | awk '{print $3}')
+
+        deploy_contract "$dry_privkey" "$dry_address"
+        log "Dry run complete. No transactions were broadcast."
+        exit 0
+    fi
+
     # Get dev account
     local dev_account
     dev_account=$(get_dev_account)
@@ -319,11 +334,6 @@ main() {
     # Deploy contract
     local contract_address
     contract_address=$(deploy_contract "$admin_privkey" "$admin_address")
-
-    if [[ "$contract_address" == "DRY_RUN" ]]; then
-        log "Dry run complete. No transactions were broadcast."
-        exit 0
-    fi
 
     # Grant access to read-only account
     grant_access "$contract_address" "$admin_privkey" "$readonly_address"
