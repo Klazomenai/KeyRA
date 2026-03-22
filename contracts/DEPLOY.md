@@ -1,30 +1,30 @@
 # KeyRAAccessControl Deployment Guide
 
-## Gas Estimates
+## Gas Costs
 
-Based on compiled bytecode (2,137 bytes, Solidity 0.8.20, Paris EVM, optimizer 10k runs).
+Measured via `forge test --gas-report` (Solidity 0.8.20, Paris EVM, optimizer 10k runs).
 
-| Operation | Gas (approx) | Type | Frequency |
+| Operation | Gas (median) | Type | Frequency |
 |-----------|-------------|------|-----------|
-| Deploy `KeyRAAccessControl` | ~600,000 | Transaction | Once |
-| `grantAccess(address)` | ~50,000 | Transaction | Per user |
-| `revokeAccess(address)` | ~30,000 | Transaction | Rare |
-| `addAdmin(address)` | ~50,000 | Transaction | Rare |
-| `removeAdmin(address)` | ~30,000 | Transaction | Rare |
-| `hasAccess(address)` | 0 | View call | Every auth request |
-| `isAdmin(address)` | 0 | View call | On demand |
+| Deploy `KeyRAAccessControl` | 517,479 | Transaction | Once |
+| `grantAccess(address)` | 47,813 | Transaction | Per user |
+| `revokeAccess(address)` | 25,935 | Transaction | Rare |
+| `addAdmin(address)` | 52,926 | Transaction | Rare |
+| `removeAdmin(address)` | 28,699 | Transaction | Rare |
+| `hasAccess(address)` | 2,545 | View call | Every auth request |
+| `isAdmin(address)` | 2,527 | View call | On demand |
 
 ### ATN Cost
 
 | Gas Price | Deploy | grantAccess | Deploy + 5 users |
 |-----------|--------|-------------|------------------|
-| 1 gwei | 0.0006 ATN | 0.00005 ATN | 0.0009 ATN |
-| 5 gwei | 0.003 ATN | 0.00025 ATN | 0.004 ATN |
-| 10 gwei | 0.006 ATN | 0.0005 ATN | 0.009 ATN |
+| 1 gwei | 0.000517 ATN | 0.000048 ATN | 0.000757 ATN |
+| 5 gwei | 0.002587 ATN | 0.000239 ATN | 0.003783 ATN |
+| 10 gwei | 0.005175 ATN | 0.000478 ATN | 0.007565 ATN |
 
-> These are EVM-level estimates from bytecode analysis. Actual gas may vary
-> slightly. Run `forge test --gas-report` in `devenv shell` for precise
-> per-function measurements, or use `--dry-run` to simulate without broadcasting.
+> Measured from `forge test --gas-report` (24 tests, median values).
+> View calls consume gas for EVM execution but cost zero ATN (no transaction).
+> Use `--dry-run` to simulate deployment without broadcasting.
 
 ## Prerequisites
 
