@@ -305,13 +305,16 @@ main() {
         if ! command -v forge &>/dev/null; then
             error "forge not found. Enter devenv shell: devenv shell"
         fi
-        check_rpc
+        log "Checking RPC endpoint: $RPC_URL"
+        if ! cast client --rpc-url "$RPC_URL" &>/dev/null; then
+            error "RPC not reachable at $RPC_URL"
+        fi
         log "Dry run mode — skipping account creation and funding"
 
         local wallet_output dry_privkey dry_address
         wallet_output=$(cast wallet new)
-        dry_address=$(echo "$wallet_output" | grep "Address:" | awk '{print $2}')
-        dry_privkey=$(echo "$wallet_output" | grep "Private key:" | awk '{print $3}')
+        dry_address=$(echo "$wallet_output" | grep "Address:" | awk '{print $2}' || true)
+        dry_privkey=$(echo "$wallet_output" | grep "Private key:" | awk '{print $3}' || true)
 
         if [[ -z "$dry_address" || -z "$dry_privkey" || "$dry_address" != 0x* || "$dry_privkey" != 0x* ]]; then
             error "Failed to parse address/private key from 'cast wallet new' output"
