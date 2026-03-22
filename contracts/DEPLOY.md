@@ -11,8 +11,8 @@ Measured via `forge test --gas-report` (Solidity 0.8.20, Paris EVM, optimizer 10
 | `revokeAccess(address)` | 25,935 | Transaction | Rare |
 | `addAdmin(address)` | 52,926 | Transaction | Rare |
 | `removeAdmin(address)` | 28,699 | Transaction | Rare |
-| `hasAccess(address)` | 2,545 | View call | Every auth request |
-| `isAdmin(address)` | 2,527 | View call | On demand |
+| `hasAccess(address)` | 2,545 | View (`eth_call`) | Every auth request |
+| `isAdmin(address)` | 2,527 | View (`eth_call`) | On demand |
 
 ### ATN Cost
 
@@ -23,7 +23,9 @@ Measured via `forge test --gas-report` (Solidity 0.8.20, Paris EVM, optimizer 10
 | 10 gwei | 0.005175 ATN | 0.000478 ATN | 0.007565 ATN |
 
 > Measured from `forge test --gas-report` (24 tests, median values).
-> View calls consume gas for EVM execution but cost zero ATN (no transaction).
+> Off-chain view calls (e.g., `eth_call`, `forge test`) consume gas for EVM
+> execution but cost zero ATN because they are not sent as transactions; calling
+> the same `view` functions via a transaction still costs gas/ATN.
 > Use `--dry-run` to simulate deployment without broadcasting.
 
 ## Prerequisites
