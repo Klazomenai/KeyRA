@@ -14,6 +14,7 @@
 # Options:
 #   --rpc URL           RPC endpoint (default: http://127.0.0.1:8545)
 #   --show-keys         Display private keys in output (for MetaMask import)
+#   --dry-run           Simulate deployment without broadcasting transactions
 #   --clean             Remove existing keys and start fresh
 #   --help              Show this help message
 #
@@ -31,6 +32,7 @@ KEYS_DIR="$PROJECT_DIR/.keys"
 # Defaults
 RPC_URL="http://127.0.0.1:8545"
 SHOW_KEYS=false
+DRY_RUN=false
 CLEAN=false
 
 # Key file names
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --show-keys)
             SHOW_KEYS=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
             shift
             ;;
         --clean)
@@ -185,15 +191,36 @@ deploy_contract() {
     log "Deploying KeyRAAccessControl contract..."
     log "  Admin: $admin_address"
 
+    local broadcast_flag="--broadcast"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        broadcast_flag=""
+        log "  Mode: DRY RUN (simulating, no transaction will be sent)"
+    fi
+
     # Deploy using forge create (CONTRACT must come before --constructor-args)
-    local output
+    # Capture output and exit code separately so failures are reported with context.
+    local output rc=0
     output=$(forge create \
         --root "$CONTRACTS_DIR" \
         --rpc-url "$RPC_URL" \
         --private-key "$privkey" \
-        --broadcast \
+        $broadcast_flag \
         "$CONTRACT_SRC" \
-        --constructor-args "$admin_address" 2>&1)
+        --constructor-args "$admin_address" 2>&1) || rc=$?
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "Dry run output:"
+        echo "$output" >&2
+        if [[ $rc -ne 0 ]]; then
+            error "forge create failed (exit $rc)"
+        fi
+        echo "DRY_RUN"
+        return
+    fi
+
+    if [[ $rc -ne 0 ]]; then
+        error "forge create failed (exit $rc). Output:\n$output"
+    fi
 
     # Extract deployed address
     local contract_address
@@ -269,8 +296,34 @@ main() {
         rm -rf "$KEYS_DIR"
     fi
 
-    # Check prerequisites
-    check_prerequisites
+    # Dry run: only check tools and RPC, then simulate with a throwaway keypair.
+    if [[ "$DRY_RUN" == "true" ]]; then
+        # Check tools and RPC only — skip .keys dir and .gitignore mutations
+        if ! command -v cast &>/dev/null; then
+            error "cast not found. Enter devenv shell: devenv shell"
+        fi
+        if ! command -v forge &>/dev/null; then
+            error "forge not found. Enter devenv shell: devenv shell"
+        fi
+        log "Checking RPC endpoint: $RPC_URL"
+        if ! cast client --rpc-url "$RPC_URL" &>/dev/null; then
+            error "RPC not reachable at $RPC_URL"
+        fi
+        log "Dry run mode — skipping account creation and funding"
+
+        local wallet_output dry_privkey dry_address
+        wallet_output=$(cast wallet new)
+        dry_address=$(echo "$wallet_output" | grep "Address:" | awk '{print $2}' || true)
+        dry_privkey=$(echo "$wallet_output" | grep "Private key:" | awk '{print $3}' || true)
+
+        if [[ -z "$dry_address" || -z "$dry_privkey" || "$dry_address" != 0x* || "$dry_privkey" != 0x* ]]; then
+            error "Failed to parse address/private key from 'cast wallet new' output"
+        fi
+
+        deploy_contract "$dry_privkey" "$dry_address"
+        log "Dry run complete. No transactions were broadcast."
+        exit 0
+    fi
 
     # Get dev account
     local dev_account
