@@ -183,4 +183,21 @@ contract KeyRAAccessControlTest is Test {
         assertTrue(acl.isAdmin(user1));
         assertEq(acl.adminCount(), 1);
     }
+
+    // Zero-address validation tests
+
+    function test_constructor_revertsOnZeroAddress() public {
+        vm.expectRevert(KeyRAAccessControl.ZeroAddress.selector);
+        new KeyRAAccessControl(address(0));
+    }
+
+    function test_addAdmin_revertsOnZeroAddress() public {
+        vm.expectRevert(KeyRAAccessControl.ZeroAddress.selector);
+        acl.addAdmin(address(0));
+    }
+
+    function test_grantAccess_revertsOnZeroAddress() public {
+        vm.expectRevert(KeyRAAccessControl.ZeroAddress.selector);
+        acl.grantAccess(address(0));
+    }
 }
