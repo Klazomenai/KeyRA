@@ -27,7 +27,7 @@ contract KeyRAAccessControl {
         _;
     }
 
-    /// @notice Initialize with the deployer as the first admin
+    /// @notice Initialize with the provided address as the first admin
     /// @param initialAdmin The address to set as the initial admin
     constructor(address initialAdmin) {
         if (initialAdmin == address(0)) revert ZeroAddress();
