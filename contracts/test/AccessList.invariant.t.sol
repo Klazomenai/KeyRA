@@ -80,8 +80,10 @@ contract KeyRAAccessControlHandler is Test {
             return; // expected — ignore
         }
 
-        // Unexpected revert — propagate as test failure
-        revert(string(reason));
+        // Unexpected revert — propagate original revert data as test failure
+        assembly {
+            revert(add(reason, 32), mload(reason))
+        }
     }
 }
 
