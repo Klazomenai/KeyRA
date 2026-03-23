@@ -6,41 +6,82 @@ import {KeyRAAccessControl} from "../src/AccessList.sol";
 
 /// @notice Handler contract that drives invariant testing by calling
 /// admin and access management functions with bounded random inputs.
+/// Catches only expected errors — unexpected reverts propagate as failures.
 contract KeyRAAccessControlHandler is Test {
     KeyRAAccessControl public acl;
-    address public initialAdmin;
 
-    constructor(KeyRAAccessControl _acl, address _initialAdmin) {
+    // Track successful operations for observability
+    uint256 public adminsAdded;
+    uint256 public adminsRemoved;
+    uint256 public accessGranted;
+    uint256 public accessRevoked;
+
+    constructor(KeyRAAccessControl _acl) {
         acl = _acl;
-        initialAdmin = _initialAdmin;
     }
 
     function addAdmin(uint256 seed) external {
         address account = _boundAddr(seed);
-        if (account == address(0)) return;
-        try acl.addAdmin(account) {} catch {}
+        try acl.addAdmin(account) {
+            adminsAdded++;
+        } catch (bytes memory reason) {
+            _expectKnownError(reason);
+        }
     }
 
     function removeAdmin(uint256 seed) external {
         address account = _boundAddr(seed);
-        if (account == address(0)) return;
-        try acl.removeAdmin(account) {} catch {}
+        try acl.removeAdmin(account) {
+            adminsRemoved++;
+        } catch (bytes memory reason) {
+            _expectKnownError(reason);
+        }
     }
 
     function grantAccess(uint256 seed) external {
         address account = _boundAddr(seed);
-        if (account == address(0)) return;
-        try acl.grantAccess(account) {} catch {}
+        try acl.grantAccess(account) {
+            accessGranted++;
+        } catch (bytes memory reason) {
+            _expectKnownError(reason);
+        }
     }
 
     function revokeAccess(uint256 seed) external {
         address account = _boundAddr(seed);
-        if (account == address(0)) return;
-        try acl.revokeAccess(account) {} catch {}
+        try acl.revokeAccess(account) {
+            accessRevoked++;
+        } catch (bytes memory reason) {
+            _expectKnownError(reason);
+        }
     }
 
     function _boundAddr(uint256 seed) internal pure returns (address) {
         return address(uint160(bound(seed, 1, type(uint160).max)));
+    }
+
+    /// @dev Only allow known/expected revert reasons. Unknown reverts fail the test.
+    function _expectKnownError(bytes memory reason) internal pure {
+        bytes4 selector;
+        if (reason.length >= 4) {
+            assembly {
+                selector := mload(add(reason, 32))
+            }
+        }
+
+        if (
+            selector == KeyRAAccessControl.AlreadyAdmin.selector
+                || selector == KeyRAAccessControl.NotAnAdmin.selector
+                || selector == KeyRAAccessControl.CannotRemoveLastAdmin.selector
+                || selector == KeyRAAccessControl.AlreadyHasAccess.selector
+                || selector == KeyRAAccessControl.NoAccess.selector
+                || selector == KeyRAAccessControl.ZeroAddress.selector
+        ) {
+            return; // expected — ignore
+        }
+
+        // Unexpected revert — propagate as test failure
+        revert(string(reason));
     }
 }
 
@@ -49,12 +90,10 @@ contract KeyRAAccessControlHandler is Test {
 contract KeyRAAccessControlInvariantTest is Test {
     KeyRAAccessControl public acl;
     KeyRAAccessControlHandler public handler;
-    address public initialAdmin;
 
     function setUp() public {
-        initialAdmin = address(this);
-        acl = new KeyRAAccessControl(initialAdmin);
-        handler = new KeyRAAccessControlHandler(acl, initialAdmin);
+        acl = new KeyRAAccessControl(address(this));
+        handler = new KeyRAAccessControlHandler(acl);
 
         // Handler acts as admin so its calls go through onlyAdmin
         acl.addAdmin(address(handler));
@@ -67,17 +106,17 @@ contract KeyRAAccessControlInvariantTest is Test {
         assertGt(acl.adminCount(), 0);
     }
 
-    /// @notice Admin count must always be at least 1.
-    function invariant_adminCountMatchesMinimum() public view {
-        assertGe(acl.adminCount(), 1);
-    }
+    /// @notice Operations are actually being exercised — not all silently reverting.
+    /// Uses a call counter to skip the check on the initial setUp() invocation.
+    uint256 private _invariantCalls;
 
-    /// @notice The initial admin or the handler must remain an admin
-    /// (since CannotRemoveLastAdmin prevents removal of the final admin).
-    function invariant_atLeastOneKnownAdminExists() public view {
-        assertTrue(
-            acl.isAdmin(initialAdmin) || acl.isAdmin(address(handler)),
-            "Neither initial admin nor handler is admin"
-        );
+    function invariant_operationsExercised() public {
+        _invariantCalls++;
+        if (_invariantCalls <= 1) return; // skip initial setUp() check
+
+        uint256 total =
+            handler.adminsAdded() + handler.adminsRemoved() + handler.accessGranted()
+                + handler.accessRevoked();
+        assertGt(total, 0, "No operations succeeded - handler may be misconfigured");
     }
 }
