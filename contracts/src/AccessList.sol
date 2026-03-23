@@ -20,6 +20,7 @@ contract KeyRAAccessControl {
     error NotAnAdmin();
     error AlreadyHasAccess();
     error NoAccess();
+    error ZeroAddress();
 
     modifier onlyAdmin() {
         if (!_admins[msg.sender]) revert NotAdmin();
@@ -29,6 +30,7 @@ contract KeyRAAccessControl {
     /// @notice Initialize with the deployer as the first admin
     /// @param initialAdmin The address to set as the initial admin
     constructor(address initialAdmin) {
+        if (initialAdmin == address(0)) revert ZeroAddress();
         _admins[initialAdmin] = true;
         _adminCount = 1;
         emit AdminAdded(initialAdmin, address(0));
@@ -37,6 +39,7 @@ contract KeyRAAccessControl {
     /// @notice Add a new admin
     /// @param account The address to add as admin
     function addAdmin(address account) external onlyAdmin {
+        if (account == address(0)) revert ZeroAddress();
         if (_admins[account]) revert AlreadyAdmin();
         _admins[account] = true;
         _adminCount++;
@@ -56,6 +59,7 @@ contract KeyRAAccessControl {
     /// @notice Grant access to an address
     /// @param account The address to grant access to
     function grantAccess(address account) external onlyAdmin {
+        if (account == address(0)) revert ZeroAddress();
         if (_accessList[account]) revert AlreadyHasAccess();
         _accessList[account] = true;
         emit AccessGranted(account, msg.sender);
