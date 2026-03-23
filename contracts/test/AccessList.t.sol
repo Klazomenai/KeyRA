@@ -200,4 +200,220 @@ contract KeyRAAccessControlTest is Test {
         vm.expectRevert(KeyRAAccessControl.ZeroAddress.selector);
         acl.grantAccess(address(0));
     }
+
+    // Self-referential operation tests
+
+    function test_removeAdmin_selfRemoval() public {
+        acl.addAdmin(user1);
+        // admin removes themselves — should succeed since adminCount > 1
+        acl.removeAdmin(admin);
+        assertFalse(acl.isAdmin(admin));
+        assertEq(acl.adminCount(), 1);
+    }
+
+    function test_grantAccess_toAdmin() public {
+        // admin and access are orthogonal — admin can grant access to themselves
+        acl.grantAccess(admin);
+        assertTrue(acl.hasAccess(admin));
+        assertTrue(acl.isAdmin(admin));
+    }
+
+    function test_revokeAccess_fromAdmin() public {
+        acl.grantAccess(admin);
+        acl.revokeAccess(admin);
+        assertFalse(acl.hasAccess(admin));
+        assertTrue(acl.isAdmin(admin)); // admin role unaffected
+    }
+
+    // State transition cycle tests
+
+    function test_grantAccess_afterRevoke_succeeds() public {
+        acl.grantAccess(user1);
+        acl.revokeAccess(user1);
+        assertFalse(acl.hasAccess(user1));
+
+        // Re-grant should succeed
+        acl.grantAccess(user1);
+        assertTrue(acl.hasAccess(user1));
+    }
+
+    function test_addAdmin_afterRemoval_succeeds() public {
+        acl.addAdmin(user1);
+        acl.removeAdmin(user1);
+        assertFalse(acl.isAdmin(user1));
+
+        // Re-add should succeed
+        acl.addAdmin(user1);
+        assertTrue(acl.isAdmin(user1));
+        assertEq(acl.adminCount(), 2);
+    }
+
+    function test_removeAdmin_doesNotRevokeAccess() public {
+        acl.addAdmin(user1);
+        acl.grantAccess(user1);
+
+        acl.removeAdmin(user1);
+
+        assertFalse(acl.isAdmin(user1));
+        assertTrue(acl.hasAccess(user1)); // access and admin are independent
+    }
+
+    // Removed admin cannot act tests
+
+    function test_removedAdmin_cannotGrantAccess() public {
+        acl.addAdmin(user1);
+        acl.removeAdmin(user1);
+
+        vm.prank(user1);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.grantAccess(user2);
+    }
+
+    function test_removedAdmin_cannotAddAdmin() public {
+        acl.addAdmin(user1);
+        acl.removeAdmin(user1);
+
+        vm.prank(user1);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.addAdmin(user2);
+    }
+
+    // Multi-admin complex scenario tests
+
+    function test_removeAdmin_threeAdmins_canRemoveTwo() public {
+        address user3 = makeAddr("user3");
+        acl.addAdmin(user1);
+        acl.addAdmin(user3);
+        assertEq(acl.adminCount(), 3);
+
+        acl.removeAdmin(user1);
+        acl.removeAdmin(user3);
+        assertEq(acl.adminCount(), 1);
+
+        // Last admin cannot be removed
+        vm.expectRevert(KeyRAAccessControl.CannotRemoveLastAdmin.selector);
+        acl.removeAdmin(admin);
+    }
+
+    function test_newAdmin_removesOriginalAdmin() public {
+        acl.addAdmin(user1);
+
+        // user1 removes the original admin who added them
+        vm.prank(user1);
+        acl.removeAdmin(admin);
+
+        assertFalse(acl.isAdmin(admin));
+        assertEq(acl.adminCount(), 1);
+
+        // user1 is now the sole admin and cannot remove themselves
+        vm.prank(user1);
+        vm.expectRevert(KeyRAAccessControl.CannotRemoveLastAdmin.selector);
+        acl.removeAdmin(user1);
+    }
+
+    function test_adminA_grants_adminB_revokes_sameUser() public {
+        acl.addAdmin(user1);
+
+        // admin grants access to user2
+        acl.grantAccess(user2);
+
+        // user1 (different admin) revokes user2's access
+        vm.prank(user1);
+        acl.revokeAccess(user2);
+
+        assertFalse(acl.hasAccess(user2));
+    }
+
+    // View function dedicated tests
+
+    function test_adminCount_afterMultipleAddRemove() public {
+        assertEq(acl.adminCount(), 1);
+        acl.addAdmin(user1);
+        assertEq(acl.adminCount(), 2);
+        acl.addAdmin(user2);
+        assertEq(acl.adminCount(), 3);
+        acl.removeAdmin(user1);
+        assertEq(acl.adminCount(), 2);
+        acl.removeAdmin(user2);
+        assertEq(acl.adminCount(), 1);
+    }
+
+    // Full lifecycle integration test
+
+    function test_fullLifecycle() public {
+        // 1. Initial admin grants access to user1
+        acl.grantAccess(user1);
+        assertTrue(acl.hasAccess(user1));
+
+        // 2. Initial admin adds user1 as admin
+        acl.addAdmin(user1);
+
+        // 3. user1 (now admin) grants access to user2
+        vm.prank(user1);
+        acl.grantAccess(user2);
+        assertTrue(acl.hasAccess(user2));
+
+        // 4. user1 revokes user2's access
+        vm.prank(user1);
+        acl.revokeAccess(user2);
+        assertFalse(acl.hasAccess(user2));
+
+        // 5. Original admin removes user1 as admin
+        acl.removeAdmin(user1);
+
+        // 6. user1 still has access but cannot admin
+        assertTrue(acl.hasAccess(user1));
+        vm.prank(user1);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.grantAccess(user2);
+    }
+
+    // Fuzz tests — access control enforcement
+
+    function testFuzz_grantAccess_revertsIfNotAdmin(address caller) public {
+        vm.assume(caller != admin);
+        vm.assume(caller != address(0));
+        vm.prank(caller);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.grantAccess(user1);
+    }
+
+    function testFuzz_addAdmin_revertsIfNotAdmin(address caller) public {
+        vm.assume(caller != admin);
+        vm.assume(caller != address(0));
+        vm.prank(caller);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.addAdmin(user1);
+    }
+
+    function testFuzz_removeAdmin_revertsIfNotAdmin(address caller) public {
+        vm.assume(caller != admin);
+        vm.assume(caller != address(0));
+        vm.prank(caller);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.removeAdmin(admin);
+    }
+
+    function testFuzz_revokeAccess_revertsIfNotAdmin(address caller) public {
+        acl.grantAccess(user1);
+        vm.assume(caller != admin);
+        vm.assume(caller != address(0));
+        vm.prank(caller);
+        vm.expectRevert(KeyRAAccessControl.NotAdmin.selector);
+        acl.revokeAccess(user1);
+    }
+
+    function testFuzz_grantAccess_thenHasAccess(address account) public {
+        vm.assume(account != address(0));
+        vm.assume(!acl.hasAccess(account));
+        acl.grantAccess(account);
+        assertTrue(acl.hasAccess(account));
+    }
+
+    function testFuzz_addAdmin_thenIsAdmin(address account) public {
+        vm.assume(account != admin);
+        vm.assume(account != address(0));
+        acl.addAdmin(account);
+        assertTrue(acl.isAdmin(account));
+    }
 }
