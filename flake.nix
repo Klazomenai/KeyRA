@@ -29,6 +29,9 @@
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
             nativeBuildInputs = [ rustToolchain ];
+            # Tests require Foundry artifacts (contracts/out/) which aren't
+            # available in the Nix sandbox. Tests run via CI, not Nix build.
+            doCheck = false;
           };
 
           alphaImage = n2c.buildImage {
