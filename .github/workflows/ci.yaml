@@ -20,3 +20,21 @@ jobs:
 
       - name: Integration tests
         run: cargo test --test integration --verbose
+
+  solidity-tests:
+    name: Solidity Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Forge build
+        working-directory: contracts
+        run: forge build
+
+      - name: Forge test
+        working-directory: contracts
+        run: forge test -vvv
