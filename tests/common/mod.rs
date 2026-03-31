@@ -113,21 +113,31 @@ pub fn sign_message(signer: &PrivateKeySigner, message: &str) -> Vec<u8> {
 pub async fn require_node(rpc_url: &str) -> bool {
     let url: url::Url = match rpc_url.parse() {
         Ok(u) => u,
-        Err(_) => return false,
+        Err(e) => {
+            if std::env::var("CI").is_ok() {
+                panic!(
+                    "E2E test has invalid RPC URL '{}' (error: {e}). \
+                     In CI, this is a failure.",
+                    rpc_url
+                );
+            }
+            eprintln!("Skipping e2e test: invalid RPC URL '{}' (error: {})", rpc_url, e);
+            return false;
+        }
     };
     let provider = ProviderBuilder::new().connect_http(url);
 
     match provider.get_block_number().await {
         Ok(_) => true,
-        Err(_) => {
+        Err(e) => {
             if std::env::var("CI").is_ok() {
                 panic!(
-                    "E2E test requires EVM node at {} but it's not running. \
+                    "E2E test requires EVM node at {} but it's not running (error: {e}). \
                      In CI, this is a failure.",
                     rpc_url
                 );
             }
-            eprintln!("Skipping e2e test: EVM node not running at {}", rpc_url);
+            eprintln!("Skipping e2e test: EVM node not running at {} (error: {})", rpc_url, e);
             false
         }
     }
