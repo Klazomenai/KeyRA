@@ -1,15 +1,15 @@
 //! End-to-end tests for the KeyRA authentication flow
 //!
-//! These tests require a running Autonity node in dev mode.
-//! Run with: `./scripts/start-autonity.sh` in a separate terminal.
+//! These tests require a running EVM node (Autonity dev mode or Anvil).
+//! Run with: `anvil --chain-id 1337` in a separate terminal.
 //!
-//! If no node is running, tests will be skipped.
+//! If no node is running, tests skip locally but panic in CI (CI=true).
 
 mod common;
 
 use alpha::auth::AuthConfig;
 use alloy::primitives::Address;
-use common::{deploy_access_contract, dev_wallet, grant_access, is_node_running, sign_message};
+use common::{deploy_access_contract, dev_wallet, grant_access, require_node, sign_message};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -104,9 +104,7 @@ async fn post_auth_token(
 /// 7. Access protected resource
 #[tokio::test]
 async fn full_auth_flow_with_access() {
-    // Check if node is running
-    if !is_node_running(RPC_URL).await {
-        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+    if !require_node(RPC_URL).await {
         return;
     }
 
@@ -206,8 +204,7 @@ async fn full_auth_flow_with_access() {
 /// Test that access is denied when address is not in access list
 #[tokio::test]
 async fn access_denied_without_access() {
-    if !is_node_running(RPC_URL).await {
-        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+    if !require_node(RPC_URL).await {
         return;
     }
 
@@ -264,8 +261,7 @@ async fn access_denied_without_access() {
 /// Test that invalid signatures are rejected
 #[tokio::test]
 async fn invalid_signature_rejected() {
-    if !is_node_running(RPC_URL).await {
-        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+    if !require_node(RPC_URL).await {
         return;
     }
 
@@ -323,8 +319,7 @@ async fn invalid_signature_rejected() {
 /// The 502 proves all prior steps (SIWE verify, nonce, access check) passed.
 #[tokio::test]
 async fn token_endpoint_returns_502_when_jwt_service_unreachable() {
-    if !is_node_running(RPC_URL).await {
-        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+    if !require_node(RPC_URL).await {
         return;
     }
 
@@ -360,8 +355,7 @@ async fn token_endpoint_returns_502_when_jwt_service_unreachable() {
 /// Test /auth/token returns 403 when address lacks access
 #[tokio::test]
 async fn token_endpoint_denied_without_access() {
-    if !is_node_running(RPC_URL).await {
-        eprintln!("Skipping e2e test: Autonity node not running at {}", RPC_URL);
+    if !require_node(RPC_URL).await {
         return;
     }
 

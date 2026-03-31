@@ -104,16 +104,41 @@ pub fn sign_message(signer: &PrivateKeySigner, message: &str) -> Vec<u8> {
     sig.as_bytes().to_vec()
 }
 
-/// Check if Autonity node is running
-pub async fn is_node_running(rpc_url: &str) -> bool {
+/// Check if EVM node is running at the given URL.
+///
+/// In CI (`CI` env var set), panics if the node is unreachable — silent
+/// skips are false positives that defeat automated testing.
+///
+/// Locally, returns `false` so callers can skip gracefully.
+pub async fn require_node(rpc_url: &str) -> bool {
     let url: url::Url = match rpc_url.parse() {
         Ok(u) => u,
-        Err(_) => return false,
+        Err(e) => {
+            if std::env::var("CI").is_ok() {
+                panic!(
+                    "E2E test has invalid RPC URL '{}' (error: {e}). \
+                     In CI, this is a failure.",
+                    rpc_url
+                );
+            }
+            eprintln!("Skipping e2e test: invalid RPC URL '{}' (error: {})", rpc_url, e);
+            return false;
+        }
     };
     let provider = ProviderBuilder::new().connect_http(url);
 
     match provider.get_block_number().await {
         Ok(_) => true,
-        Err(_) => false,
+        Err(e) => {
+            if std::env::var("CI").is_ok() {
+                panic!(
+                    "E2E test requires EVM node at {} but it's not running (error: {e}). \
+                     In CI, this is a failure.",
+                    rpc_url
+                );
+            }
+            eprintln!("Skipping e2e test: EVM node not running at {} (error: {})", rpc_url, e);
+            false
+        }
     }
 }
